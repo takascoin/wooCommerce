@@ -47,7 +47,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	function takascoin_gateway_init() {
 
 
-		class Takascoin_Gateway extends WC_Payment_Gateway {
+		class WC_Takascoin_Gateway extends WC_Payment_Gateway {
 
 			public function __construct() {
 				$this->id           = 'takascoin';
@@ -62,8 +62,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 				$this->title        = $this->settings['title'];
 				$this->description  = $this->settings['description'];
 
-				add_action('woocommerce_api_wc_gateway_takascoin', array( $this, 'ipn_handler' ));
 				add_action( 'woocommerce_update_options_payment_gateways_takascoin', array( $this, 'process_admin_options' ) );
+				add_action( 'woocommerce_api_wc_takascoin_gateway', array( $this, 'ipn_handler' ) );
 			} 
 
 			public function init_form_fields() {
@@ -104,9 +104,6 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 				$order->update_status('on-hold', __( 'Awaiting bitcoin transaction', 'woocommerce' ));
 
-				$order->reduce_order_stock();
-
-
 				require(plugin_dir_path(__FILE__) . 'php-client/takascoin.php');
 
 				$amount = $order->get_total();
@@ -114,21 +111,24 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 				$secret = hash('sha256', $address . mt_rand());
 
+                $itemName = '';
+                foreach ($order->get_items() as $item) {
+                    $itemName .= $item['name'] . ' ';
+                }
+
 				$takascoin = new Takascoin();
 
 				$options = array(
 					'orderID'  => ''.$order_id,
-					'callback' => urlencode(get_site_url() . '/wc-api/CALLBACK/'),
-					'secret'   => $secret
+					'callback' => WC()->api_request_url('WC_Takascoin_Gateway'),
+					'secret'   => $secret,
+					'item'     => substr($itemName, 0, 16)
 				);
-
-				//if ($this->settings['email'] != '') $options['email'] = $this->settings['email'];
-
+                
 				$payment = $takascoin->payment($amount, $apiKey, $options);
-                error_log(json_encode($payment));
                 
 				if (!$payment['success']) {
-					$order->add_order_note(__('Error while processing takascoin payment: '. $payment['error'], 'takascoin-woocommerce'));
+					$order->add_order_note(__('Error while processing takascoin payment: '. $payment['message'] .' '. json_encode($options), 'takascoin-woocommerce'));
 					$woocommerce->add_error(__('Sorry, but there was an error processing your order. Please try again or try a different payment method.', 'takascoin-woocommerce'));
 					return;
 				}
@@ -142,34 +142,34 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 			public function ipn_handler() {
                 $entityBody = file_get_contents('php://input');
                 
-                $info = json_decode($entityBody);
+                $info = json_decode($entityBody, true);
 
-				$order_id = $info['orderID'];
-				$status   = $info['status'];
-				
-				$order = new WC_Order($order_id);
+			    $order_id = $info['orderID'];
+			    $status   = $info['status'];
+			
+			    $order = new WC_Order($order_id);
 
-				switch ($status) {
-					case 'cancelled':
-						$order->update_status('failed', __( 'Awaiting bitcoin transaction', 'woocommerce' ));
-						break;
-					case 'approved':
-						add_order_note(__('Takascoin payment confirmed', 'takascoin-woocommerce'));
-						$order->payment_complete();
-						break;
+			    switch ($status) {
+				    case 'cancelled':
+					    $order->update_status('failed', __( 'Awaiting bitcoin transaction', 'woocommerce' ));
+					    break;
+				    case 'approved':
+					    $order->add_order_note(__('Takascoin payment approved', 'takascoin-woocommerce'));
+					    $order->payment_complete();
+					    break;
 
-				}
+			    }
 
-			}
+		    }
 
 			private function get_redirect_url($payment) {
-				return 'https://coinvoy.net/paymentPage/' . $payment['id'] . '?redirect=' . urlencode($this->get_return_url());
+				return 'https://coinvoy.net/takas/paymentPage/' . $payment['id'] . '?redirect=' . urlencode($this->get_return_url());
 			}
 		}	
 	}	
 
 	function add_takascoin_gateway() {
-		$methods[] = 'Takascoin_Gateway';
+		$methods[] = 'wc_takascoin_gateway';
 
 		return $methods;
 	}
