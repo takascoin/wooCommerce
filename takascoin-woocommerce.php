@@ -115,6 +115,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 foreach ($order->get_items() as $item) {
                     $itemName .= $item['name'] . ' ';
                 }
+                
+                if (strlen($itemName) > 15) $itemName = substr($itemName, 0, 15) . "...";
 
 				$takascoin = new Takascoin();
 
@@ -122,7 +124,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 					'orderID'  => ''.$order_id,
 					'callback' => WC()->api_request_url('WC_Takascoin_Gateway'),
 					'secret'   => $secret,
-					'item'     => substr($itemName, 0, 16)
+					'item'     => $itemName
 				);
                 
 				$payment = $takascoin->payment($amount, $apiKey, $options);
